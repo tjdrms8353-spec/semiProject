@@ -1,6 +1,8 @@
 import { applyMorphTest } from './glbGeometry.js'
 
 export const BODY_MORPH_MODEL_URL = '/models/ONFIT_Human_BodyBuild_v11.glb'
+export const FEMALE_BODY_MODEL_URL = '/models/ONFIT_Human_Female_v2.glb'
+export const supportsBodyMorphs = url => url === BODY_MORPH_MODEL_URL || url === FEMALE_BODY_MODEL_URL
 export const MUSCULAR_ABS_WEIGHT=.25
 
 // Composition is a visual preset, separate from measured lengths/circumferences.
@@ -52,7 +54,7 @@ export function applyBodyMorphs(scene, defaults, parameters, modelUrl, build='av
   applyMorphTest(scene, defaults, '', 0)
   const supported = new Set()
   const weights = bodyMorphWeights(parameters)
-  if (modelUrl === BODY_MORPH_MODEL_URL) scene.traverse(mesh => {
+  if (supportsBodyMorphs(modelUrl)) scene.traverse(mesh => {
     if (!mesh.isMesh || !mesh.morphTargetInfluences) return
     const bindings = [
       ['abdomen_protrusion_m', 'abdomen_front'],
@@ -74,7 +76,7 @@ export function applyBodyMorphs(scene, defaults, parameters, modelUrl, build='av
       if(index!==undefined)mesh.morphTargetInfluences[index]=value
     }
     const absIndex=mesh.morphTargetDictionary?.body_abdominal_definition
-    if(absIndex!==undefined)mesh.morphTargetInfluences[absIndex]=build==='muscular'?MUSCULAR_ABS_WEIGHT:0
+    if(absIndex!==undefined)mesh.morphTargetInfluences[absIndex]=modelUrl===BODY_MORPH_MODEL_URL&&build==='muscular'?MUSCULAR_ABS_WEIGHT:0
   })
   return { supported: [...supported], unsupported: BODY_MORPH_REQUIREMENTS.map(([field]) => field).filter(field => !supported.has(field)) }
 }

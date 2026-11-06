@@ -8,13 +8,13 @@ import NikeTShirt from './NikeTShirt.jsx'
 import GarmentGlb from './GarmentGlb.jsx'
 import { applyMorphTest, captureMorphWeights, modelLayout, modelHeightLayout, preciseFrame } from './glbGeometry.js'
 import { createGlbCameraSession } from './glbCamera.js'
-import { applyBodyMorphs, bodyMorphWeights, bodyBuildWeights, BODY_MORPH_MODEL_URL } from './bodyMorphs.js'
+import { applyBodyMorphs, bodyMorphWeights, bodyBuildWeights, BODY_MORPH_MODEL_URL, FEMALE_BODY_MODEL_URL, supportsBodyMorphs } from './bodyMorphs.js'
 
 export const MANNEQUIN_MODEL_URLS = {
   // Body-only derivative; the original GLB stays untouched.
   test: BODY_MORPH_MODEL_URL,
   male: '/models/ONFIT_Human_Male.glb',
-  female: '/models/ONFIT_Human_Female.glb',
+  female: FEMALE_BODY_MODEL_URL,
 }
 
 function GlbCamera({ frame, rotation, viewRevision, editLogo }) {
@@ -72,7 +72,7 @@ export default function GlbMannequinModel({ parameters, modelUrl = MANNEQUIN_MOD
     return()=>{active=false;texture.dispose()}
   },[invalidate,MUSCLE_DETAIL_ENABLED])
   const garmentWeights = useMemo(() => {
-    if (modelUrl !== BODY_MORPH_MODEL_URL) return null
+    if (!supportsBodyMorphs(modelUrl)) return null
     if (!targetName) return {...bodyMorphWeights(parameters),...bodyBuildWeights(bodyBuild)}
     // Manual diagnostic resets the body to defaults before overriding one key.
     const weights = bodyMorphWeights()

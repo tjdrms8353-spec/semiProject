@@ -23,9 +23,11 @@ export const HOODED_JACKET_MORPH_GLB = {
 }
 
 export function getTopGarment(kind, modelType = 'test') {
-  if (kind === 'hooded_jacket') return modelType === 'test' ? HOODED_JACKET_MORPH_GLB : HOODED_JACKET_GLB
-  if (kind === 'long_sleeve') return modelType === 'test' ? LONG_SLEEVE_MORPH_GLB : LONG_SLEEVE_GLB
-  return modelType === 'test' ? TSHIRT_MORPH_GLB : TSHIRT_GLB
+  if (modelType === 'female') return kind === 'hooded_jacket' ? FEMALE_HOODED_JACKET_GLB : kind === 'long_sleeve' ? FEMALE_LONG_SLEEVE_GLB : FEMALE_TSHIRT_GLB
+  const morphed = modelType === 'test' || modelType === 'female'
+  if (kind === 'hooded_jacket') return morphed ? HOODED_JACKET_MORPH_GLB : HOODED_JACKET_GLB
+  if (kind === 'long_sleeve') return morphed ? LONG_SLEEVE_MORPH_GLB : LONG_SLEEVE_GLB
+  return morphed ? TSHIRT_MORPH_GLB : TSHIRT_GLB
 }
 export const PANTS_GLB = {
   slot: 'bottom', url: '/models/ONFIT_Pants_BodyBuild_v10.glb', tintable: true, preservePattern: false, defaultColor: 'default',
@@ -48,16 +50,28 @@ export const OUTER_GLB = {
   position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1],
 }
 
+// Female-specific refits retain their own URLs/geometry; all slots still use
+// the same body parameter contract and independent appearance state.
+export const FEMALE_TSHIRT_GLB = {...TSHIRT_MORPH_GLB, url:'/models/ONFIT_TShirt_Female_v6.glb'}
+export const FEMALE_LONG_SLEEVE_GLB = {...LONG_SLEEVE_MORPH_GLB, url:'/models/ONFIT_LongSleeve_Female_v6.glb'}
+export const FEMALE_HOODED_JACKET_GLB = {...HOODED_JACKET_MORPH_GLB, url:'/models/ONFIT_HoodedJacket_Female_v5.glb'}
+export const FEMALE_PANTS_GLB = {...PANTS_GLB, url:'/models/ONFIT_Pants_Female_v5.glb'}
+export const FEMALE_OUTER_GLB = {...OUTER_GLB, url:'/models/ONFIT_Outer_Female_v5.glb'}
+export const FEMALE_SKIRT_GLB = {...FEMALE_PANTS_GLB, url:'/models/ONFIT_Skirt_Female_v3.glb'}
+export const getBottomGarment = (modelType, kind='pants') => modelType === 'female' ? kind === 'skirt' ? FEMALE_SKIRT_GLB : FEMALE_PANTS_GLB : PANTS_GLB
+export const getOuterGarment = modelType => modelType === 'female' ? FEMALE_OUTER_GLB : OUTER_GLB
+
 export function applyGarmentMorphs(scene, defaults, weights, url) {
   scene.traverse(mesh => {
     const base = defaults.get(mesh.uuid)
     if (!base) return
     mesh.morphTargetInfluences.splice(0, base.length, ...base)
-    const targets = [OUTER_GLB.url, LONG_SLEEVE_MORPH_GLB.url, HOODED_JACKET_MORPH_GLB.url].includes(url)
+    const targets = url === FEMALE_SKIRT_GLB.url ? ['waist_width','pelvis_width','hip_volume','abdomen_front']
+      : [OUTER_GLB.url, LONG_SLEEVE_MORPH_GLB.url, HOODED_JACKET_MORPH_GLB.url, FEMALE_OUTER_GLB.url, FEMALE_LONG_SLEEVE_GLB.url, FEMALE_HOODED_JACKET_GLB.url].includes(url)
       ? ['shoulder_width', 'chest_volume', 'waist_width', 'abdomen_front', 'pelvis_width']
-      : [PANTS_GLB.url, '/models/ONFIT_Pants_BodyMorph_v1.glb'].includes(url)
+      : [PANTS_GLB.url, FEMALE_PANTS_GLB.url, '/models/ONFIT_Pants_BodyMorph_v1.glb'].includes(url)
       ? ['waist_width', 'pelvis_width', 'hip_volume', 'thigh_girth']
-      : [TSHIRT_MORPH_GLB.url, '/models/ONFIT_TShirt_BodyMorph_v4.glb', '/models/ONFIT_TShirt_BodyMorph_v3.glb'].includes(url)
+      : [TSHIRT_MORPH_GLB.url, FEMALE_TSHIRT_GLB.url, '/models/ONFIT_TShirt_BodyMorph_v4.glb', '/models/ONFIT_TShirt_BodyMorph_v3.glb'].includes(url)
         ? ['abdomen_front', 'pelvis_width', 'shoulder_width', 'chest_volume', 'waist_width', 'hip_volume'] : []
     for (const name of targets) {
       const index = mesh.morphTargetDictionary?.[`garment_${name}`]

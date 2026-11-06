@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import MannequinCanvas from '../components/fitting/MannequinCanvas.jsx'
 import { MANNEQUIN_MODEL_URLS } from '../components/fitting/GlbMannequinModel.jsx'
-import { getTopGarment, PANTS_GLB, OUTER_GLB, NEUTRAL_CAP_GLB } from '../components/fitting/garmentGlb.js'
+import { getTopGarment, getBottomGarment, getOuterGarment, NEUTRAL_CAP_GLB } from '../components/fitting/garmentGlb.js'
 import { GARMENT_COLORS } from '../components/fitting/garmentAppearance.js'
 import InbodyUploadPanel from '../components/fitting/InbodyUploadPanel.jsx'
 import ApiStatus from '../components/fitting/ApiStatus.jsx'
@@ -65,6 +65,7 @@ export default function FittingPage() {
   const [customTopColor, setCustomTopColor] = useState('#16181d')
   const [garmentStatus, setGarmentStatus] = useState({ state: 'idle' })
   const [pantsVisible, setPantsVisible] = useState(false)
+  const [bottomKind, setBottomKind] = useState('pants')
   const [pantsStatus, setPantsStatus] = useState({ state: 'idle' })
   const [outerVisible, setOuterVisible] = useState(false)
   const [outerStatus, setOuterStatus] = useState({ state: 'idle' })
@@ -130,6 +131,7 @@ export default function FittingPage() {
     if (next === modelType) return
     setProductFit(null)
     setModelType(next)
+    if (next !== 'female') setBottomKind('pants')
     setMorphTargets([])
     setMorphTarget('')
     setMorphWeight(0)
@@ -163,15 +165,23 @@ export default function FittingPage() {
 
   function wearTop(kind) {
     clearProductSlot('top')
-    if (glbShirt && topKind === kind && (kind === 'short_sleeve' || modelType === 'test')) { setShirtVisible(true); return }
-    if (kind !== 'short_sleeve' ? modelType !== 'test' : modelType === 'rings') selectModel('test')
+    if (glbShirt && topKind === kind && modelType !== 'rings') { setShirtVisible(true); return }
+    if (modelType === 'rings') selectModel('test')
     if (kind === 'hooded_jacket') setOuterVisible(false)
     setTopKind(kind); setGlbShirt(true); setNikeShirt(false); setShirtVisible(true)
     setGarmentStatus({ state: 'loading' }); setFit('none'); setFixedGarment(null); setServerPreview(null)
   }
 
+  function wearBottom(kind) {
+    if (kind === 'skirt' && modelType !== 'female') return
+    clearProductSlot('bottom')
+    if (pantsVisible && bottomKind === kind) { setPantsVisible(false); return }
+    if (modelType === 'rings') selectModel('test')
+    setBottomKind(kind); setPantsVisible(true); setPantsStatus({state:'loading'})
+  }
+
   function applyBodyPreset(preset,build) {
-    if (modelType !== 'test') selectModel('test')
+    if (modelType === 'rings') selectModel('test')
     setValues(applyBodyPresetValues(preset,values))
     setBodyBuild(build)
     setSource(`${preset.label} 테스트용 예시 치수`)
@@ -188,7 +198,7 @@ export default function FittingPage() {
     if (!plan.supported) throw new Error(plan.reason)
     if (!valid) throw new Error('신체 치수를 허용 범위 안으로 입력하세요.')
     if (plan.slot === 'outer' && glbShirt && topKind === 'hooded_jacket' && shirtVisible) throw new Error('현재 후드 집업과 패딩은 동시 착용을 지원하지 않습니다.')
-    if (modelType !== 'test') selectModel('test')
+    if (modelType === 'rings') selectModel('test')
     if (plan.slot === 'top') wearTop(plan.category)
     if (plan.slot === 'bottom') setPantsVisible(true)
     if (plan.slot === 'outer') setOuterVisible(true)
@@ -235,7 +245,7 @@ export default function FittingPage() {
         <fieldset className="fitting-fit-options">
           <legend>체형 선택</legend>
           <div className="fitting-actions">
-            {Object.entries(BODY_PRESETS).map(([key,preset])=><button key={key} type="button" aria-pressed={modelType==='test'&&bodyBuild===key} onClick={()=>applyBodyPreset(preset,key)}>{preset.label}</button>)}
+            {Object.entries(BODY_PRESETS).map(([key,preset])=><button key={key} type="button" aria-pressed={modelType!=='rings'&&bodyBuild===key} onClick={()=>applyBodyPreset(preset,key)}>{preset.label}</button>)}
           </div>
         </fieldset>
         {!token ? <form onSubmit={event => {
@@ -347,6 +357,20 @@ export default function FittingPage() {
         <p role="status" aria-live="polite">{busy ? '처리 중…' : notice}</p>
       </section>
       <section className="fitting-panel" aria-label="3D 마네킹 미리보기">
+        <div className="fitting-actions">
+          <button type="button" onClick={() => {
+            setGlbShirt(false); setNikeShirt(false); setShirtVisible(true); setTopKind('short_sleeve')
+            setPantsVisible(false); setOuterVisible(false); setCapVisible(false)
+            setBottomKind('pants')
+            setGarmentColor('white'); setCustomTopColor('#16181d')
+            setSlotColors({bottom:'default',outer:'default',headwear:'default'})
+            setCustomSlotColors({bottom:'#373b43',outer:'#16181d',headwear:'#16181d'})
+            setProductFit(null); setSizeMetrics(null); setFixedGarment(null)
+            setFit('none'); setTransparent(false); setServerPreview(null)
+            setGarmentStatus({state:'idle'}); setPantsStatus({state:'idle'})
+            setOuterStatus({state:'idle'}); setCapStatus({state:'idle'})
+          }}>의류·색상 초기화</button>
+        </div>
         <fieldset className="fitting-fit-options">
           <legend>상의</legend>
           <div className="fitting-actions">
@@ -382,36 +406,34 @@ export default function FittingPage() {
         </fieldset>
         <fieldset className="fitting-fit-options">
           <legend>하의</legend>
-          <button type="button" aria-pressed={pantsVisible && modelType === 'test'} onClick={() => {
-            clearProductSlot('bottom')
-            if (pantsVisible && modelType === 'test') { setPantsVisible(false); return }
-            if (modelType !== 'test') selectModel('test')
-            setPantsVisible(true); setPantsStatus({ state: 'loading' })
-          }}>{pantsVisible && modelType === 'test' ? '바지 벗기' : '바지 착용'}</button>
+          <div className="fitting-actions">
+            <button type="button" aria-pressed={pantsVisible && bottomKind === 'pants'} onClick={() => wearBottom('pants')}>{pantsVisible && bottomKind === 'pants' ? '바지 벗기' : '바지 착용'}</button>
+            {modelType === 'female' && <button type="button" aria-pressed={pantsVisible && bottomKind === 'skirt'} onClick={() => wearBottom('skirt')}>{pantsVisible && bottomKind === 'skirt' ? '치마 벗기' : '치마 착용'}</button>}
+          </div>
           {slotColorControls('bottom','하의')}
-          {pantsVisible && ['missing','error'].includes(pantsStatus.state) && <p role="alert">{pantsStatus.message || '바지를 불러오지 못했습니다.'}</p>}
+          {pantsVisible && ['missing','error'].includes(pantsStatus.state) && <p role="alert">{pantsStatus.message || '하의를 불러오지 못했습니다.'}</p>}
 
         </fieldset>
         <fieldset className="fitting-fit-options">
           <legend>아우터</legend>
-          <button type="button" disabled={glbShirt && topKind === 'hooded_jacket' && shirtVisible} aria-pressed={outerVisible && modelType === 'test'} onClick={() => {
+          <button type="button" disabled={glbShirt && topKind === 'hooded_jacket' && shirtVisible} aria-pressed={outerVisible && modelType !== 'rings'} onClick={() => {
             clearProductSlot('outer')
-            if (outerVisible && modelType === 'test') { setOuterVisible(false); return }
-            if (modelType !== 'test') selectModel('test')
+            if (outerVisible && modelType !== 'rings') { setOuterVisible(false); return }
+            if (modelType === 'rings') selectModel('test')
             setOuterVisible(true); setOuterStatus({ state: 'loading' })
-          }}>{outerVisible && modelType === 'test' ? '아우터 벗기' : '아우터 착용'}</button>
+          }}>{outerVisible && modelType !== 'rings' ? '아우터 벗기' : '아우터 착용'}</button>
           {slotColorControls('outer','아우터')}
           {outerVisible && ['missing','error'].includes(outerStatus.state) && <p role="alert">{outerStatus.message || '아우터를 불러오지 못했습니다.'}</p>}
 
         </fieldset>
         <fieldset className="fitting-fit-options">
           <legend>모자</legend>
-          <button type="button" aria-pressed={capVisible && modelType === 'test'} onClick={() => {
+          <button type="button" aria-pressed={capVisible && modelType !== 'rings'} onClick={() => {
             clearProductSlot('headwear')
-            if (capVisible && modelType === 'test') { setCapVisible(false); return }
-            if (modelType !== 'test') selectModel('test')
+            if (capVisible && modelType !== 'rings') { setCapVisible(false); return }
+            if (modelType === 'rings') selectModel('test')
             setCapVisible(true); setCapStatus({ state: 'loading' })
-          }}>{capVisible && modelType === 'test' ? '모자 벗기' : '기본 볼캡 착용'}</button>
+          }}>{capVisible && modelType !== 'rings' ? '모자 벗기' : '기본 볼캡 착용'}</button>
           {capVisible && ['missing','error'].includes(capStatus.state) && <p role="alert">{capStatus.message || '모자를 불러오지 못했습니다.'}</p>}
           {slotColorControls('headwear','모자')}
 
@@ -419,12 +441,13 @@ export default function FittingPage() {
         <fieldset className="fitting-fit-options">
           <legend>마네킹 모델</legend>
           <div className="fitting-actions">
-            <button type="button" aria-pressed={modelType === 'test'} onClick={() => selectModel('test')}>GLB 테스트 모델</button>
+            <button type="button" aria-pressed={modelType === 'test'} onClick={() => selectModel('test')}>기본 마네킹</button>
             <button type="button" aria-pressed={modelType === 'male'} disabled={!genderModels.male}
               onClick={() => selectModel('male')}>남성형 마네킹</button>
             <button type="button" aria-pressed={modelType === 'female'} disabled={!genderModels.female}
               onClick={() => selectModel('female')}>여성형 마네킹</button>
           </div>
+          {modelType === 'female' && <small>여성형 보정 의류 · 극단 체형에서 관통이 남을 수 있습니다.</small>}
 
           {modelType !== 'rings' && <details className="fitting-diagnostics"><summary>고급 모델 진단</summary>
 
@@ -459,10 +482,10 @@ export default function FittingPage() {
           rotation={rotation} viewRevision={viewRevision} fit={fit} transparent={transparent} modelType={modelType} morphTarget={morphTarget} bodyBuild={bodyBuild}
           morphWeight={morphWeight} onMorphTargets={receiveMorphTargets} nikeShirt={nikeShirt}
           shirtVisible={shirtVisible} fixedSize={fixedGarment !== null}
-          garmentGlb={glbShirt && (topKind === 'short_sleeve' || modelType === 'test') ? productFit?.plan.slot === 'top' ? productFit.plan.model : getTopGarment(topKind, modelType) : null} onGarmentStatus={setGarmentStatus} garmentColor={productFit?.plan.slot === 'top' ? productFit.plan.color : garmentColor}
-          bottomGarment={pantsVisible && modelType === 'test' ? productFit?.plan.slot === 'bottom' ? productFit.plan.model : PANTS_GLB : null} onBottomStatus={setPantsStatus}
-          outerGarment={outerVisible && modelType === 'test' && !(glbShirt && topKind === 'hooded_jacket' && shirtVisible) ? productFit?.plan.slot === 'outer' ? productFit.plan.model : OUTER_GLB : null} onOuterStatus={setOuterStatus}
-          headwear={capVisible && modelType === 'test' ? productFit?.plan.slot === 'headwear' ? productFit.plan.model : NEUTRAL_CAP_GLB : null} onHeadwearStatus={setCapStatus} headwearColor={productFit?.plan.slot === 'headwear' ? productFit.plan.color : slotColors.headwear}
+          garmentGlb={glbShirt && modelType !== 'rings' ? productFit?.plan.slot === 'top' ? productFit.plan.model : getTopGarment(topKind, modelType) : null} onGarmentStatus={setGarmentStatus} garmentColor={productFit?.plan.slot === 'top' ? productFit.plan.color : garmentColor}
+          bottomGarment={pantsVisible && modelType !== 'rings' ? productFit?.plan.slot === 'bottom' ? productFit.plan.model : getBottomGarment(modelType,bottomKind) : null} onBottomStatus={setPantsStatus}
+          outerGarment={outerVisible && modelType !== 'rings' && !(glbShirt && topKind === 'hooded_jacket' && shirtVisible) ? productFit?.plan.slot === 'outer' ? productFit.plan.model : getOuterGarment(modelType) : null} onOuterStatus={setOuterStatus}
+          headwear={capVisible && modelType !== 'rings' ? productFit?.plan.slot === 'headwear' ? productFit.plan.model : NEUTRAL_CAP_GLB : null} onHeadwearStatus={setCapStatus} headwearColor={productFit?.plan.slot === 'headwear' ? productFit.plan.color : slotColors.headwear}
           bottomColor={productFit?.plan.slot === 'bottom' ? productFit.plan.color : slotColors.bottom} outerColor={productFit?.plan.slot === 'outer' ? productFit.plan.color : slotColors.outer}
           productDesign={productFit?.plan.category === 'short_sleeve' ? productFit.design : null}
           productSize={productFit?.plan.category === 'short_sleeve' ? productFit.size : null} onSizeMetrics={receiveSizeMetrics} /></div>
