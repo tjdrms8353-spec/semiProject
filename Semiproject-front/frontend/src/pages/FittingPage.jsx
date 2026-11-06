@@ -39,12 +39,16 @@ const fields = [
   ['thigh_circumference_cm', '한쪽 허벅지둘레', 'cm', 25, 100],
 ]
 
-export default function FittingPage() {
+export default function FittingPage({session=null,onSessionChange}={}) {
   const [values, setValues] = useState(EXAMPLE)
   const [bodyBuild,setBodyBuild]=useState('average')
   const [baseline, setBaseline] = useState({ values: EXAMPLE, source: '예시 치수',bodyBuild:'average' })
   const [token, setToken] = useState('') // memory only; never persist passwords or body measurements
   const [accountId, setAccountId] = useState(null)
+  useEffect(() => {
+    setToken(session?.access_token ?? '')
+    setAccountId(session?.user?.id ?? null)
+  }, [session])
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('예시 치수로 시작합니다. 실제 사용자 데이터가 아닙니다.')
   const [source, setSource] = useState('예시 치수')
@@ -149,7 +153,7 @@ export default function FittingPage() {
   async function run(task) {
     setBusy(true)
     try { await task() } catch (error) {
-      if (error.status === 401) { setToken(''); setAccountId(null) }
+      if (error.status === 401) { setToken(''); setAccountId(null); onSessionChange?.(null) }
       setNotice(error.message === 'Failed to fetch' ? '서버에 연결할 수 없습니다. 백엔드 실행 주소와 연결 설정을 확인해 주세요.' : error.message)
     } finally { setBusy(false) }
   }
@@ -264,6 +268,7 @@ export default function FittingPage() {
             }
             setAccountId(account.id)
             setToken(result.access_token)
+            onSessionChange?.({...result,user:account})
             form.reset()
             setNotice(savedMeasurements ? '현재 브라우저 탭에서 저장한 치수를 복원했습니다.' : '로그인되었습니다. 내 키·체중 불러오기를 눌러 주세요.')
           })
@@ -287,7 +292,7 @@ export default function FittingPage() {
             setSource(loadedSource)
             setNotice('빈 값과 부위별 치수를 직접 확인해 주세요. 조정하지 않은 부위는 예시값입니다.')
           })}>내 키·체중 불러오기</button>
-          <button disabled={busy} onClick={() => { clearFittingMeasurements(accountId); setAccountId(null); setToken(''); setFixedGarment(null); setValues(EXAMPLE); setBaseline({ values: EXAMPLE, source: '예시 치수' }); setServerPreview(null); setSource('예시 치수'); setNotice('로그아웃하고 이 브라우저 탭에 저장한 치수를 지웠습니다.') }}>로그아웃·치수 지우기</button>
+          <button disabled={busy} onClick={() => { clearFittingMeasurements(accountId); onSessionChange?.(null); setAccountId(null); setToken(''); setFixedGarment(null); setValues(EXAMPLE); setBaseline({ values: EXAMPLE, source: '예시 치수' }); setServerPreview(null); setSource('예시 치수'); setNotice('로그아웃하고 이 브라우저 탭에 저장한 치수를 지웠습니다.') }}>로그아웃·치수 지우기</button>
         </div>}
         {token && <p className="fitting-storage-note">복구용 치수는 회원별 브라우저 탭에 임시 저장됩니다. 탭을 닫거나 로그아웃하면 삭제됩니다. ‘서버에서 변형값 확인’을 누르면 계산을 위해 API에 치수를 전송합니다.</p>}
         {token && <InbodyUploadPanel key={token} token={token} disabled={busy} onExpired={() => setToken('')}

@@ -2,12 +2,15 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import Header from './components/common/Header.jsx'
 import Footer from './components/common/Footer.jsx'
 import AuthModal from './components/common/AuthModal.jsx'
+import ScrollToTopButton from './components/common/ScrollToTopButton.jsx'
 import HomePage from './pages/HomePage.jsx'
 import StyleProfilePage from './pages/StyleProfilePage.jsx'
 import OutfitPage from './pages/OutfitPage.jsx'
 import WardrobePage from './pages/WardrobePage.jsx'
 import PriceTimingPage from './pages/PriceTimingPage.jsx'
 import PriceComparePage from './pages/PriceComparePage.jsx'
+import SeasonalOutfitPage from './pages/SeasonalOutfitPage.jsx'
+import AdminPage from './pages/AdminPage.jsx'
 const FittingPage = lazy(() => import('./pages/FittingPage.jsx'))
 
 function readRoute() {
@@ -23,11 +26,14 @@ const pages = {
   '/wardrobe': WardrobePage,
   '/price': PriceTimingPage,
   '/compare': PriceComparePage,
+  '/seasonal': SeasonalOutfitPage,
+  '/admin': AdminPage,
 }
 
 export default function App() {
   const [route, setRoute] = useState(readRoute)
   const [authMode, setAuthMode] = useState(null)
+  const [session, setSession] = useState(null)
   useEffect(() => {
     const handleRoute = () => {
       setRoute(readRoute())
@@ -39,9 +45,12 @@ export default function App() {
   }, [])
   const Page = pages[route] || HomePage
   return <div className="app-shell min-h-screen bg-canvas text-ink">
-    <Header onAuth={setAuthMode} />
-    <Suspense fallback={<p role="status">화면을 불러오는 중입니다…</p>}><Page /></Suspense>
+    <Header onAuth={setAuthMode} session={session} onLogout={() => setSession(null)} />
+    <Suspense fallback={<p role="status">화면을 불러오는 중입니다.</p>}>
+      <Page session={session} onSessionChange={setSession} />
+    </Suspense>
     <Footer />
-    <AuthModal mode={authMode} onClose={(nextMode) => setAuthMode(nextMode || null)} />
+    <ScrollToTopButton />
+    <AuthModal mode={authMode} onClose={(nextMode) => setAuthMode(nextMode || null)} onAuthenticated={setSession} />
   </div>
 }

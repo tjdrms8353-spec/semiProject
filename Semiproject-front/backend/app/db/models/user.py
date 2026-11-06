@@ -7,7 +7,7 @@ from app.db.base import Base
 
 
 class User(Base):
-    """Confirmed ERD names; column sizes require review before TiDB migration."""
+    """Team database column names; public API attributes stay compatible."""
 
     __tablename__ = "users"
 
@@ -16,7 +16,7 @@ class User(Base):
     )
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    name: Mapped[str] = mapped_column(String(80), nullable=False)
+    name: Mapped[str] = mapped_column("display_name", String(80), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(), default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), nullable=False
     )

@@ -22,7 +22,7 @@ export const getFittingPreview = (token, measurements, garmentOptions = {}) =>
   request('/fitting/preview', token, { ...measurements, ...garmentOptions })
 
 export async function getFittingApiStatus() {
-  const healthUrl = new URL(API_BASE).origin + '/health'
+  const healthUrl = new URL(API_BASE, globalThis.location?.origin ?? 'http://localhost:8000').origin + '/health'
   const authUrl = `${API_BASE}/auth/status`
   const [healthResult, authResult] = await Promise.all([
     fetch(healthUrl).then(async response => response.ok ? response.json() : Promise.reject(new Error(`HTTP ${response.status}`)))

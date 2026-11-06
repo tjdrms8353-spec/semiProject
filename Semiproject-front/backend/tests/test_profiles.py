@@ -90,3 +90,46 @@ def test_legacy_route_and_swagger(profile_client):
     for method in ("get", "put", "patch"):
         assert paths["/api/profiles/me"][method]["security"] == [{"BearerAuth": []}]
     assert "201" in paths["/api/profiles/me"]["put"]["responses"]
+
+
+def test_team_profile_columns_and_api_aliases(profile_client):
+    from sqlalchemy import text
+    c, engine, headers = profile_client
+    result = c.put('/api/profiles/me', json={
+        'preferred_style': 'casual', 'preferred_fit': 'regular'
+    }, headers=headers)
+    assert result.status_code == 201
+    assert result.json()['id'] == result.json()['user_id']
+    assert list(UserProfile.__table__.primary_key.columns.keys()) == ['user_id']
+    assert 'id' not in UserProfile.__table__.columns
+    with engine.connect() as connection:
+        row = connection.execute(text(
+            'SELECT style_preference, fit_preference FROM user_profiles'
+        )).one()
+        assert tuple(row) == ('casual', 'regular')
+        assert connection.execute(text('SELECT display_name FROM users')).scalar()
+
+
+def test_legacy_integer_height_and_precise_extension(profile_client):
+    from sqlalchemy import text
+    c, engine, headers = profile_client
+    created = c.put('/api/profiles/me', json={'height_cm': 175.75}, headers=headers)
+    assert created.status_code == 201
+    assert created.json()['height_cm'] == 175.75
+    with engine.begin() as connection:
+        assert connection.execute(text('SELECT height_cm FROM user_profiles')).scalar() == 176
+        connection.execute(text('UPDATE user_profiles SET height_cm = 180'))
+    assert c.get('/api/profiles/me', headers=headers).json()['height_cm'] == 180
+    cleared = c.patch('/api/profiles/me', json={'height_cm': None}, headers=headers)
+    assert cleared.json()['height_cm'] is None
+    with engine.connect() as connection:
+        assert tuple(connection.execute(text('SELECT height_cm, height_cm_precise FROM user_profiles')).one()) == (None, None)
+
+
+def test_existing_height_without_precision_column_value(profile_client):
+    from sqlalchemy import text
+    c, engine, headers = profile_client
+    c.put('/api/profiles/me', json={'height_cm': 170}, headers=headers)
+    with engine.begin() as connection:
+        connection.execute(text('UPDATE user_profiles SET height_cm_precise = NULL'))
+    assert c.get('/api/profiles/me', headers=headers).json()['height_cm'] == 170

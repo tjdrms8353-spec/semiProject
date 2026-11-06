@@ -2,7 +2,7 @@ services:
   - type: web
     name: onfit-api
     runtime: python
-    rootDir: backend
+    rootDir: Semiproject-front/backend
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
@@ -20,7 +20,7 @@ services:
   - type: cron
     name: onfit-price-refresh
     runtime: python
-    rootDir: backend
+    rootDir: Semiproject-front/backend
     buildCommand: pip install -r requirements.txt
     startCommand: python -m app.crawlers.jobs.run_once
     schedule: "0 0 * * *"
@@ -34,9 +34,10 @@ services:
   - type: web
     name: onfit-frontend
     runtime: static
-    rootDir: frontend
-    buildCommand: npm ci && npm run build
+    rootDir: Semiproject-front/frontend
+    buildCommand: npm ci && npm --prefix ../ai-fashion ci && npm run build:site
     staticPublishPath: dist
     envVars:
       - key: VITE_API_BASE_URL
-        value: https://onfit-api.onrender.com/api
+        # Enter the actual deployed API origin followed by /api.
+        sync: false

@@ -18,3 +18,5 @@ python-multipart>=0.0.20,<1
 pypdfium2>=4.30,<6
 Pillow>=11,<13
 pytesseract>=0.3.13,<0.4
+python-dotenv>=1,<2
+openai>=2.0,<3.0

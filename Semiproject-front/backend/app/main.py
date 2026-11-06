@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router
 from app.core.config import settings
+from routers.circle_search import router as circle_search_router
 
 app = FastAPI(title="ONFIT API", version="0.1.0", description="Personal styling and smart shopping API")
 app.add_middleware(
@@ -13,6 +14,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(api_router, prefix="/api")
+app.include_router(circle_search_router)
 
 
 @app.get("/health", tags=["health"])
