@@ -13,14 +13,15 @@ from PIL import Image, ImageDraw, ImageFont
 import pytesseract
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from app.features.inbody.extraction import extract_preview
+from app.features.inbody.extraction import extract_preview, tesseract_config
 
 
 def verify():
-    if not shutil.which('tesseract'):
+    config = tesseract_config()
+    if not shutil.which(pytesseract.pytesseract.tesseract_cmd):
         return {'status': 'failed', 'reason': 'tesseract_not_installed'}, 2
     try:
-        languages = set(pytesseract.get_languages(config=''))
+        languages = set(pytesseract.get_languages(config=config))
         missing = sorted({'kor', 'eng'} - languages)
         if missing:
             return {'status': 'failed', 'reason': 'missing_language_data', 'missing': missing}, 2
@@ -28,7 +29,9 @@ def verify():
                     'skeletal_muscle_kg': 30.12, 'body_fat_pct': 20.5,
                     'measured_at': None}
         # Fixed fixture font installed by the Dockerfile.
-        font = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 36)
+        fonts = [Path('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'), Path('C:/Windows/Fonts/arial.ttf')]
+        font_path = next((path for path in fonts if path.is_file()), None)
+        font = ImageFont.truetype(str(font_path), 36) if font_path else ImageFont.load_default(size=36)
         with Image.new('RGB', (1200, 320), 'white') as image:
             draw = ImageDraw.Draw(image)
             for index, text in enumerate([

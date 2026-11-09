@@ -7,6 +7,12 @@ export const MUSCULAR_ABS_WEIGHT=.25
 
 // Composition is a visual preset, separate from measured lengths/circumferences.
 export function bodyBuildWeights(build='average') {
+  if (build?.kind === 'inbody') {
+    const safe = value => Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0
+    const lean = safe(build.build_lean), muscular = safe(build.build_muscular)
+    const scale = Math.max(1, lean + muscular)
+    return { build_lean: lean / scale, build_muscular: muscular / scale }
+  }
   return {build_lean:build==='slim'?1:0,build_muscular:build==='muscular'?1:0}
 }
 
@@ -76,7 +82,11 @@ export function applyBodyMorphs(scene, defaults, parameters, modelUrl, build='av
       if(index!==undefined)mesh.morphTargetInfluences[index]=value
     }
     const absIndex=mesh.morphTargetDictionary?.body_abdominal_definition
-    if(absIndex!==undefined)mesh.morphTargetInfluences[absIndex]=modelUrl===BODY_MORPH_MODEL_URL&&build==='muscular'?MUSCULAR_ABS_WEIGHT:0
+    if(absIndex!==undefined)mesh.morphTargetInfluences[absIndex]=modelUrl===BODY_MORPH_MODEL_URL
+      ? build==='muscular' ? MUSCULAR_ABS_WEIGHT
+        : build?.kind==='inbody'&&Number.isFinite(build.abdominal_definition)
+          ? Math.max(0,Math.min(MUSCULAR_ABS_WEIGHT,build.abdominal_definition)) : 0
+      : 0
   })
   return { supported: [...supported], unsupported: BODY_MORPH_REQUIREMENTS.map(([field]) => field).filter(field => !supported.has(field)) }
 }

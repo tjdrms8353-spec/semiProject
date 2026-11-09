@@ -1,5 +1,22 @@
 import { API_BASE } from './api.js'
 
+export async function getInbodyBodyPreview(token, measurements, signal) {
+  const response = await fetch(`${API_BASE}/inbody/body-preview`, {
+    method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(measurements), signal,
+  })
+  if (!response.ok) {
+    const error = new Error(response.status === 401 ? '다시 로그인해 주세요.'
+      : response.status === 422 ? '키·체중·골격근량·체지방률을 확인해 주세요.' : '체형 제안을 불러오지 못했습니다.')
+    error.status = response.status
+    throw error
+  }
+  const data = await response.json()
+  if (data.composition?.kind !== 'inbody' || !data.personalized_measurements || data.approximate !== true || !data.measurements
+      || !Array.isArray(data.reasons) || !Array.isArray(data.limitations)) throw new Error('체형 응답 형식이 올바르지 않습니다.')
+  return data
+}
+
 export async function extractInbody(token, file, signal) {
   if (!file || file.size === 0) throw new Error('내용이 있는 파일을 선택해 주세요.')
   if (file.size > 10 * 1024 * 1024) throw new Error('파일은 10MiB 이하여야 합니다.')

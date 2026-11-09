@@ -5,25 +5,12 @@ import { getTopGarment, getBottomGarment, getOuterGarment, NEUTRAL_CAP_GLB } fro
 import { GARMENT_COLORS } from '../components/fitting/garmentAppearance.js'
 import InbodyUploadPanel from '../components/fitting/InbodyUploadPanel.jsx'
 import { planProductFitting } from '../components/fitting/productFitting.js'
-import { getFittingDefaults, getFittingPreview, localParameters,
+import { localParameters,
   readFittingMeasurements, writeFittingMeasurements, clearFittingMeasurements } from '../services/fitting.js'
 import './FittingPage.css'
 import { circumferenceEase } from '../components/fitting/silhouette.js'
 import { BODY_PRESETS, applyBodyPresetValues } from '../components/fitting/bodyPresets.js'
-
-const GARMENT_PARAMETER_FIELDS = [
-  'shoulder_half_width_m', 'chest_radius_m', 'waist_radius_m', 'abdomen_front_depth_m',
-  'pelvis_half_width_m', 'hip_radius_m', 'thigh_radius_m', 'hem_half_width_m',
-  'chest_ease_cm', 'waist_ease_cm', 'abdomen_front_clearance_m', 'hem_clearance_m',
-]
-
-function isUsablePreview(result, expectedFit, expectedFixedSize) {
-  return result?.parameters && result?.garment_parameters?.fit === expectedFit &&
-    result.garment_parameters.fixed_size === expectedFixedSize &&
-    GARMENT_PARAMETER_FIELDS.every(field => Number.isFinite(result.garment_parameters[field])) &&
-    ['height_m', 'shoulder_width_m', 'waist_radius_m', 'chest_radius_m', 'abdomen_protrusion_m',
-      'pelvis_width_m', 'hip_radius_m', 'thigh_radius_m'].every(field => Number.isFinite(result.parameters[field]))
-}
+import { applyInbodyBodyPreview } from '../components/fitting/inbodyBodyPreview.js'
 
 const EXAMPLE = { height_cm: 175, weight_kg: 70, shoulder_width_cm: 42, waist_circumference_cm: 80,
   chest_circumference_cm: 95, abdomen_protrusion_cm: 0, pelvis_width_cm: 30,
@@ -41,6 +28,7 @@ const fields = [
 export default function FittingPage({session=null,onSessionChange,onRequestLogin}={}) {
   const [values, setValues] = useState(EXAMPLE)
   const [bodyBuild,setBodyBuild]=useState('average')
+  const [personalBody, setPersonalBody] = useState(null)
   const [baseline, setBaseline] = useState({ values: EXAMPLE, source: '예시 치수',bodyBuild:'average' })
   const [token, setToken] = useState('') // memory only; never persist passwords or body measurements
   const [accountId, setAccountId] = useState(null)
@@ -54,6 +42,8 @@ export default function FittingPage({session=null,onSessionChange,onRequestLogin
       setSource('예시 치수')
       setServerPreview(null)
       setFixedGarment(null)
+      setPersonalBody(null)
+      setBodyBuild('average')
     }
     previousAccount.current = nextAccount
     setToken(session?.access_token ?? '')
@@ -68,7 +58,7 @@ export default function FittingPage({session=null,onSessionChange,onRequestLogin
       }
     }
   }, [session])
-  const [busy, setBusy] = useState(false)
+  const busy = false
   const [notice, setNotice] = useState('예시 치수로 시작합니다. 실제 사용자 데이터가 아닙니다.')
   const [source, setSource] = useState('예시 치수')
   const [serverPreview, setServerPreview] = useState(null)
@@ -110,10 +100,18 @@ export default function FittingPage({session=null,onSessionChange,onRequestLogin
     else setProductFit(current=>current?.plan.slot===slot?{...current,plan:{...current.plan,color,colorApplied:true}}:current)
   }
   function slotColorControls(slot,label) {
-    return <div className="fitting-actions" role="group" aria-label={`${label} 색상`}>
+    return <div className="fitting-actions fitting-color-controls" role="group" aria-label={`${label} 색상`}>
+      <span className="fitting-control-label">색상</span>
       <button type="button" aria-pressed={slotColors[slot]==='default'&&productFit?.plan.slot!==slot} onClick={()=>chooseSlotColor(slot,'default')}>기본</button>
       <button type="button" aria-pressed={slotColors[slot]!=='default'} onClick={()=>chooseSlotColor(slot,customSlotColors[slot])}>사용자 지정</button>
       {slotColors[slot]!=='default'&&<label className="fitting-custom-color"><input type="color" aria-label={`${label} 사용자 지정 색상`} value={customSlotColors[slot]} onChange={event=>{const color=event.target.value;setCustomSlotColors(current=>({...current,[slot]:color}));chooseSlotColor(slot,color)}} /></label>}
+    </div>
+  }
+  function wearControls(label, wearing, wear, remove, blocked = false) {
+    return <div className="fitting-actions fitting-wear-controls" role="group" aria-label={`${label} 착용 상태`}>
+      <span className="fitting-control-label">착용</span>
+      <button type="button" aria-pressed={wearing} disabled={blocked} onClick={wear}>착용</button>
+      <button type="button" aria-pressed={!wearing} onClick={remove}>벗기</button>
     </div>
   }
   function chooseTopColor(value) {
@@ -169,14 +167,6 @@ export default function FittingPage({session=null,onSessionChange,onRequestLogin
       : circumferenceEase(parameters, garmentParameters, fit)
     : null
 
-  async function run(task) {
-    setBusy(true)
-    try { await task() } catch (error) {
-      if (error.status === 401) { setToken(''); setAccountId(null); onSessionChange?.(null) }
-      setNotice(error.message === 'Failed to fetch' ? '서버에 연결할 수 없습니다. 백엔드 실행 주소와 연결 설정을 확인해 주세요.' : error.message)
-    } finally { setBusy(false) }
-  }
-
   function change(key, value) {
     const next = { ...values, [key]: value === '' ? '' : Number(value) }
     setValues(next)
@@ -198,7 +188,7 @@ export default function FittingPage({session=null,onSessionChange,onRequestLogin
   function wearBottom(kind) {
     if (kind === 'skirt' && modelType !== 'female') return
     clearProductSlot('bottom')
-    if (pantsVisible && bottomKind === kind) { setPantsVisible(false); return }
+    if (pantsVisible && bottomKind === kind) return
     if (modelType === 'rings') selectModel('test')
     setBottomKind(kind); setPantsVisible(true); setPantsStatus({state:'loading'})
   }
@@ -214,6 +204,18 @@ export default function FittingPage({session=null,onSessionChange,onRequestLogin
     // Clear that mode for this explicitly requested template comparison.
     setProductFit(current => current ? { ...current, size: undefined } : null)
     setNotice(`${preset.label} 예시를 적용했습니다. 키는 유지하며 세부 치수는 직접 조정할 수 있습니다.`)
+  }
+
+  function applyPersonalBody(preview) {
+    const { values: next, bodyBuild: build } = applyInbodyBodyPreview(preview)
+    setPersonalBody(preview)
+    setValues(next); setBodyBuild(build)
+    setBaseline({ values: next, source: '나의 인바디 체형', bodyBuild: build })
+    setSource('나의 인바디 체형'); setServerPreview(null); setFixedGarment(null)
+    setMorphTarget(''); setMorphWeight(0); setFit('none')
+    setProductFit(current => current ? { ...current, size: undefined } : null)
+    writeFittingMeasurements(accountId, next)
+    setNotice('나의 인바디 체형을 적용했습니다.')
   }
 
   function fitProduct(product) {
@@ -268,66 +270,21 @@ export default function FittingPage({session=null,onSessionChange,onRequestLogin
           <legend>체형 선택</legend>
           <div className="fitting-actions">
             {Object.entries(BODY_PRESETS).map(([key,preset])=><button key={key} type="button" aria-pressed={modelType!=='rings'&&bodyBuild===key} onClick={()=>applyBodyPreset(preset,key)}>{preset.label}</button>)}
+            <button type="button" disabled={!personalBody} aria-pressed={bodyBuild?.kind === 'inbody'}
+              title={personalBody ? '확인한 인바디로 계산한 체형 다시 적용' : '인바디 입력 필요'}
+              onClick={() => applyPersonalBody(personalBody)}>나의 인바디 체형</button>
           </div>
+          {personalBody && <p>추정 체형은 실제와 다를 수 있습니다.</p>}
         </fieldset>
         {!token ? <div className="fitting-account-prompt">
           <h2>내 기록 불러오기</h2>
           <p>로그인하면 프로필·인바디 기록을 불러올 수 있습니다.</p>
           <button type="button" onClick={onRequestLogin}>로그인하고 내 기록 불러오기</button>
-        </div> : <div className="fitting-actions">
-          <button disabled={busy} onClick={() => run(async () => {
-            const data = await getFittingDefaults(token)
-            const loaded = { ...values, height_cm: data.height_cm ?? '', weight_kg: data.weight_kg ?? '' }
-            writeFittingMeasurements(accountId, loaded)
-            const loadedSource = data.source === 'inbody' ? '키·체중: 최신 인바디' : data.source === 'profile' ? '키·체중: 프로필' : '직접 입력 필요'
-            setValues(loaded)
-            setBaseline({ values: loaded, source: loadedSource })
-            setServerPreview(null)
-            setSource(loadedSource)
-            setNotice('빈 값과 부위별 치수를 직접 확인해 주세요. 조정하지 않은 부위는 예시값입니다.')
-          })}>내 키·체중 불러오기</button>
-          <button disabled={busy} onClick={() => { clearFittingMeasurements(accountId); onSessionChange?.(null); setAccountId(null); setToken(''); setFixedGarment(null); setValues(EXAMPLE); setBaseline({ values: EXAMPLE, source: '예시 치수' }); setServerPreview(null); setSource('예시 치수'); setNotice('로그아웃하고 이 브라우저 탭에 저장한 치수를 지웠습니다.') }}>로그아웃·치수 지우기</button>
-        </div>}
-        {token && <p className="fitting-storage-note">복구용 치수는 회원별 브라우저 탭에 임시 저장됩니다. 탭을 닫거나 로그아웃하면 삭제됩니다. ‘서버에서 변형값 확인’을 누르면 계산을 위해 API에 치수를 전송합니다.</p>}
+        </div> : null}
         {token && <InbodyUploadPanel key={token} token={token} disabled={busy} onExpired={() => { setToken(''); setAccountId(null); onSessionChange?.(null) }}
-          onApply={confirmedValues => {
-            const updated = { ...values, ...confirmedValues }
-            setValues(updated)
-            writeFittingMeasurements(accountId, updated)
-            setBaseline({ values: updated, source: '인바디 파일에서 확인한 키·체중' })
-            setSource('인바디 파일에서 확인한 키·체중')
-            setServerPreview(null)
-            setNotice('키·체중만 반영했습니다. 부위별 치수는 직접 확인해 주세요.')
-          }} onSelectRecord={record => {
-            const updated = { ...values, height_cm: record.height_cm, weight_kg: record.weight_kg }
-            setValues(updated)
-            writeFittingMeasurements(accountId, updated)
-            setBaseline({ values: updated, source: `인바디 기록 ${record.id}` })
-            setSource(`인바디 기록 ${record.id}`)
-            setServerPreview(null)
-            setNotice('선택한 기록의 키·체중만 피팅에 반영했습니다. 나머지 치수는 직접 확인해 주세요.')
-          }} />}
-        <form onSubmit={event => {
-          event.preventDefault()
-          run(async () => {
-            setServerPreview(null)
-            const selectedFit = fit === 'none' ? 'regular' : fit
-            const result = await getFittingPreview(token, values, {
-              garment_fit: selectedFit,
-              fixed_garment_parameters: fixedGarment,
-            })
-            if (!isUsablePreview(result, selectedFit, fixedGarment !== null)) {
-              throw new Error('서버가 피팅 치수 또는 의류 실루엣 계산값을 반환하지 않았습니다.')
-            }
-            setServerPreview({
-              parameters: result.parameters,
-              garmentParameters: result.garment_parameters,
-              fit,
-            })
-            setNotice('서버 계산 완료. DB에는 저장하지 않았습니다.')
-          })
-        }}>
-          <fieldset disabled={busy}>
+          onApplyBody={applyPersonalBody}
+          />}
+          <fieldset disabled={busy} className="fitting-measurements-grid">
             <legend>세부 치수 조정</legend>
             {fields.map(([key, label, unit, min, max]) => <div key={key} className="fitting-measurement">
               <label htmlFor={`measure-${key}`}>{label} ({unit})</label>
@@ -340,19 +297,15 @@ export default function FittingPage({session=null,onSessionChange,onRequestLogin
 
             </div>)}
 
-            <button disabled={!token || !valid} type="submit">서버에서 변형값 확인</button>
             <div className="fitting-actions fitting-reset-actions">
               <button type="button" onClick={() => {
                 setValues({ ...baseline.values }); setBodyBuild(baseline.bodyBuild??'average'); writeFittingMeasurements(accountId, baseline.values); setSource(baseline.source); setServerPreview(null)
-                setNotice('조정 기준 치수로 되돌렸습니다. DB 변경은 없습니다.')
-              }}>조정 전으로 되돌리기</button>
-              <button type="button" disabled={!valid} onClick={() => {
-                setBaseline({ values: { ...values }, source,bodyBuild }); writeFittingMeasurements(accountId, values); setNotice('현재 치수를 브라우저 탭 저장값과 되돌리기 기준으로 설정했습니다. 탭을 닫으면 지워집니다.')
-              }}>현재 치수를 기준으로</button>
+                setNotice('수치를 초기화했습니다.')
+              }}>수치 초기화</button>
+
             </div>
 
           </fieldset>
-        </form>
         <p role="status" aria-live="polite">{busy ? '처리 중…' : notice}</p>
       </section>
       <section className="fitting-panel" aria-label="3D 마네킹 미리보기">
@@ -370,24 +323,19 @@ export default function FittingPage({session=null,onSessionChange,onRequestLogin
             setOuterStatus({state:'idle'}); setCapStatus({state:'idle'})
           }}>의류·색상 초기화</button>
         </div>
+        <div className="fitting-wardrobe-grid">
         <fieldset className="fitting-fit-options">
           <legend>상의</legend>
           <div className="fitting-actions">
-            <button type="button" aria-pressed={modelType !== 'rings' && fit === 'none' && !glbShirt && !nikeShirt && !pantsVisible && !outerVisible && !capVisible} onClick={() => {
-              if (modelType === 'rings') selectModel('test')
-              setProductFit(null)
-              setGlbShirt(false); setNikeShirt(false); setFit('none')
-              setPantsVisible(false); setOuterVisible(false); setCapVisible(false)
-              setFixedGarment(null); setServerPreview(null)
-            }}>마네킹만 보기</button>
+
             <button type="button" aria-pressed={glbShirt && topKind === 'short_sleeve'} onClick={() => wearTop('short_sleeve')}>반팔티셔츠</button>
             <button type="button" aria-pressed={glbShirt && topKind === 'long_sleeve'} onClick={() => wearTop('long_sleeve')}>긴팔티셔츠</button>
             <button type="button" aria-pressed={glbShirt && topKind === 'hooded_jacket'} onClick={() => wearTop('hooded_jacket')}>후드집업</button>
           </div>
-          {(nikeShirt || glbShirt) && <label className="fitting-toggle"><input type="checkbox" checked={shirtVisible}
-            onChange={event => { setShirtVisible(event.target.checked); if (!event.target.checked) clearProductSlot('top') }} />상의 표시</label>}
-          {glbShirt ? <>
-            <div className="fitting-actions" role="group" aria-label="상의 색상">
+          {wearControls('상의', (nikeShirt || glbShirt) && shirtVisible,
+            () => wearTop(topKind), () => { setShirtVisible(false); clearProductSlot('top') })}
+            <div className="fitting-actions fitting-color-controls" role="group" aria-label="상의 색상">
+              <span className="fitting-control-label">색상</span>
               {GARMENT_COLORS.map(color => <button type="button" key={color.id}
                 aria-pressed={(productFit?.plan.slot==='top' ? productFit.plan.color===color.hex : garmentColor===color.id)} onClick={() => chooseTopColor(color.id)}>
                 <span aria-hidden="true" style={{ display: 'inline-block', width: 14, height: 14, borderRadius: '50%',
@@ -398,45 +346,41 @@ export default function FittingPage({session=null,onSessionChange,onRequestLogin
             </div>
             {glbShirt && shirtVisible && ['missing','error'].includes(garmentStatus.state) && <p role="alert">{garmentStatus.message || '상의를 불러오지 못했습니다.'}</p>}
 
-          </> : <>
-
-
-          </>}
         </fieldset>
         <fieldset className="fitting-fit-options">
           <legend>하의</legend>
           <div className="fitting-actions">
-            <button type="button" aria-pressed={pantsVisible && bottomKind === 'pants'} onClick={() => wearBottom('pants')}>{pantsVisible && bottomKind === 'pants' ? '바지 벗기' : '바지 착용'}</button>
-            {modelType === 'female' && <button type="button" aria-pressed={pantsVisible && bottomKind === 'skirt'} onClick={() => wearBottom('skirt')}>{pantsVisible && bottomKind === 'skirt' ? '치마 벗기' : '치마 착용'}</button>}
+            <button type="button" aria-pressed={bottomKind === 'pants'} onClick={() => wearBottom('pants')}>바지</button>
+            {modelType === 'female' && <button type="button" aria-pressed={bottomKind === 'skirt'} onClick={() => wearBottom('skirt')}>치마</button>}
           </div>
+          {wearControls('하의', pantsVisible, () => wearBottom(bottomKind), () => { setPantsVisible(false); clearProductSlot('bottom') })}
           {slotColorControls('bottom','하의')}
           {pantsVisible && ['missing','error'].includes(pantsStatus.state) && <p role="alert">{pantsStatus.message || '하의를 불러오지 못했습니다.'}</p>}
 
         </fieldset>
         <fieldset className="fitting-fit-options">
           <legend>아우터</legend>
-          <button type="button" disabled={glbShirt && topKind === 'hooded_jacket' && shirtVisible} aria-pressed={outerVisible && modelType !== 'rings'} onClick={() => {
+          {wearControls('아우터', outerVisible && modelType !== 'rings', () => {
             clearProductSlot('outer')
-            if (outerVisible && modelType !== 'rings') { setOuterVisible(false); return }
             if (modelType === 'rings') selectModel('test')
-            setOuterVisible(true); setOuterStatus({ state: 'loading' })
-          }}>{outerVisible && modelType !== 'rings' ? '아우터 벗기' : '아우터 착용'}</button>
+            setOuterVisible(true)
+          }, () => { setOuterVisible(false); clearProductSlot('outer') }, glbShirt && topKind === 'hooded_jacket' && shirtVisible)}
           {slotColorControls('outer','아우터')}
           {outerVisible && ['missing','error'].includes(outerStatus.state) && <p role="alert">{outerStatus.message || '아우터를 불러오지 못했습니다.'}</p>}
 
         </fieldset>
         <fieldset className="fitting-fit-options">
           <legend>모자</legend>
-          <button type="button" aria-pressed={capVisible && modelType !== 'rings'} onClick={() => {
+          {wearControls('모자', capVisible && modelType !== 'rings', () => {
             clearProductSlot('headwear')
-            if (capVisible && modelType !== 'rings') { setCapVisible(false); return }
             if (modelType === 'rings') selectModel('test')
-            setCapVisible(true); setCapStatus({ state: 'loading' })
-          }}>{capVisible && modelType !== 'rings' ? '모자 벗기' : '기본 볼캡 착용'}</button>
+            setCapVisible(true)
+          }, () => { setCapVisible(false); clearProductSlot('headwear') })}
           {capVisible && ['missing','error'].includes(capStatus.state) && <p role="alert">{capStatus.message || '모자를 불러오지 못했습니다.'}</p>}
           {slotColorControls('headwear','모자')}
 
         </fieldset>
+        </div>
         <fieldset className="fitting-fit-options">
           <legend>마네킹 모델</legend>
           <div className="fitting-actions">
@@ -476,6 +420,13 @@ export default function FittingPage({session=null,onSessionChange,onRequestLogin
         {productFit?.size && <p className="fitting-storage-note">선택 사이즈: {productFit.size.name} · {productFit.size.table.source.label}<br />
           입력 실측: 어깨 {productFit.size.row.shoulder} / 가슴 단면 {productFit.size.row.chestFlat} / 총장 {productFit.size.row.length} / 소매 {productFit.size.row.sleeve??'미제공'} (cm)<br />
           모델 기준점 수치 보정 · 체형 자동 확대 없음 · 실제 봉제선 대응 미검증 · 관통/착용 가능 여부 판정 아님</p>}
+        <div className="fitting-view-guide" aria-label="3D 화면 사용법">
+          <strong>3D 화면 사용법</strong>
+          <span>마우스 드래그: 회전</span>
+          <span>마우스 휠: 확대·축소</span>
+          <span>오른쪽 버튼 드래그: 위치 이동</span>
+          <span>아래 정면·측면·뒷면 버튼으로 방향 선택</span>
+        </div>
         {valid ? <div className="fitting-canvas"><MannequinCanvas parameters={parameters} garmentParameters={garmentParameters}
           calculatedGarment={fit !== 'none' && serverPreview?.fit === fit ? serverPreview.garmentParameters : null}
           rotation={rotation} viewRevision={viewRevision} fit={fit} transparent={transparent} modelType={modelType} morphTarget={morphTarget} bodyBuild={bodyBuild}

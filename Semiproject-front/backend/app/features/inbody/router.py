@@ -12,11 +12,18 @@ from app.features.inbody import service
 from app.features.inbody.schemas import RecordPublic, RecordWrite
 from app.features.inbody.schemas import ExtractionPreview
 from app.features.inbody.extraction import MAX_FILE_BYTES, extract_preview
+from app.features.inbody.body_preview import BodyPreviewInput, BodyPreview, suggest_body
 
 router = APIRouter(route_class=PrivateValidationRoute, responses={
     401: {"model": ErrorResponse, "description": "로그인 필요 또는 토큰 오류"},
     503: {"model": ErrorResponse, "description": "인증 또는 DB 설정 필요"},
 })
+
+
+@router.post('/body-preview', response_model=BodyPreview, summary='확인한 인바디 수치로 시각 체형 예시 제안')
+def body_preview(payload: BodyPreviewInput, user: User = Depends(get_current_user)):
+    """DB 저장 없이 기존 프리셋을 제안합니다. 부위 실측·의학적 분류가 아닙니다."""
+    return suggest_body(payload)
 
 
 @router.post("/extract", response_model=ExtractionPreview, summary="인바디 PDF·이미지 수치 추출 미리보기",
@@ -27,8 +34,9 @@ router = APIRouter(route_class=PrivateValidationRoute, responses={
 async def preview_inbody(file: Annotated[UploadFile, File(description="PDF/PNG/JPEG, 최대 10MiB. PDF 최대 3페이지.")],
                          user: User = Depends(get_current_user)):
     """원본과 추출값을 DB에 저장하지 않습니다. 파일명·원문 텍스트도 응답하지 않습니다.
-    추출값은 오인식 가능성이 있어 사용자 확인이 필수입니다. 한 줄에 표기된 항목명과 수치만
-    추출하며, 표·그래프·모호한 값은 null일 수 있습니다. measured_at은 직접 입력하세요.
+    추출값은 오인식 가능성이 있어 사용자 확인이 필수입니다. 명시된 항목명·수치를 읽으며
+    같은 줄의 여러 항목과 바로 다음 줄의 단일 수치를 지원합니다. 표·그래프·모호한 값은
+    null일 수 있습니다. measured_at은 직접 입력하세요.
     이미지/텍스트 없는 PDF는 서버에 Tesseract 및 kor/eng 언어 데이터가 필요합니다.
     확인한 values를 수정·보완한 뒤 POST /api/inbody/records로 저장하세요.
     """

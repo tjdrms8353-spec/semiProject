@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     secret_key: str = "development-only-change-me"
     access_token_expire_minutes: int = Field(default=30, ge=1, le=1440)
     collection_interval_hours: int = 12
+    tesseract_cmd: str = ""
+    tesseract_data_dir: str = ""
 
     model_config = SettingsConfigDict(env_file=(
         str(Path(__file__).resolve().parents[3] / '.env'),
