@@ -47,7 +47,7 @@ export default function App() {
   return <div className="app-shell min-h-screen bg-canvas text-ink">
     <Header onAuth={setAuthMode} session={session} onLogout={() => setSession(null)} />
     <Suspense fallback={<p role="status">화면을 불러오는 중입니다.</p>}>
-      <Page session={session} onSessionChange={setSession} />
+      <Page session={session} onSessionChange={setSession} onRequestLogin={() => setAuthMode('login')} />
     </Suspense>
     <Footer />
     <ScrollToTopButton />

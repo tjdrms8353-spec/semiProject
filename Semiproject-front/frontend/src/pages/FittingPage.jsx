@@ -1,12 +1,11 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import MannequinCanvas from '../components/fitting/MannequinCanvas.jsx'
 import { MANNEQUIN_MODEL_URLS } from '../components/fitting/GlbMannequinModel.jsx'
 import { getTopGarment, getBottomGarment, getOuterGarment, NEUTRAL_CAP_GLB } from '../components/fitting/garmentGlb.js'
 import { GARMENT_COLORS } from '../components/fitting/garmentAppearance.js'
 import InbodyUploadPanel from '../components/fitting/InbodyUploadPanel.jsx'
-import ApiStatus from '../components/fitting/ApiStatus.jsx'
 import { planProductFitting } from '../components/fitting/productFitting.js'
-import { fittingLogin, getFittingAccount, getFittingDefaults, getFittingPreview, localParameters,
+import { getFittingDefaults, getFittingPreview, localParameters,
   readFittingMeasurements, writeFittingMeasurements, clearFittingMeasurements } from '../services/fitting.js'
 import './FittingPage.css'
 import { circumferenceEase } from '../components/fitting/silhouette.js'
@@ -39,15 +38,35 @@ const fields = [
   ['thigh_circumference_cm', '한쪽 허벅지둘레', 'cm', 25, 100],
 ]
 
-export default function FittingPage({session=null,onSessionChange}={}) {
+export default function FittingPage({session=null,onSessionChange,onRequestLogin}={}) {
   const [values, setValues] = useState(EXAMPLE)
   const [bodyBuild,setBodyBuild]=useState('average')
   const [baseline, setBaseline] = useState({ values: EXAMPLE, source: '예시 치수',bodyBuild:'average' })
   const [token, setToken] = useState('') // memory only; never persist passwords or body measurements
   const [accountId, setAccountId] = useState(null)
+  const previousAccount = useRef(null)
   useEffect(() => {
+    const nextAccount = session?.user?.id ?? null
+    if (previousAccount.current !== null && previousAccount.current !== nextAccount) {
+      clearFittingMeasurements(previousAccount.current)
+      setValues(EXAMPLE)
+      setBaseline({ values: EXAMPLE, source: '예시 치수', bodyBuild: 'average' })
+      setSource('예시 치수')
+      setServerPreview(null)
+      setFixedGarment(null)
+    }
+    previousAccount.current = nextAccount
     setToken(session?.access_token ?? '')
     setAccountId(session?.user?.id ?? null)
+    if (session?.access_token && session?.user?.id) {
+      const savedMeasurements = readFittingMeasurements(session.user.id)
+      if (savedMeasurements) {
+        setValues(savedMeasurements)
+        setServerPreview(null)
+        setBaseline({ values: savedMeasurements, source: '이 브라우저 세션의 저장 치수' })
+        setSource('이 브라우저 세션의 저장 치수')
+      }
+    }
   }, [session])
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('예시 치수로 시작합니다. 실제 사용자 데이터가 아닙니다.')
@@ -243,7 +262,6 @@ export default function FittingPage({session=null,onSessionChange}={}) {
     <a href="#/home">← 홈으로</a>
     <p className="fitting-eyebrow">ONFIT · BODY PREVIEW</p>
     <h1>나의 체형 미리보기</h1>
-    <ApiStatus />
     <div className="fitting-layout">
       <section className="fitting-panel" aria-label="신체 치수 입력">
         <fieldset className="fitting-fit-options">
@@ -252,35 +270,11 @@ export default function FittingPage({session=null,onSessionChange}={}) {
             {Object.entries(BODY_PRESETS).map(([key,preset])=><button key={key} type="button" aria-pressed={modelType!=='rings'&&bodyBuild===key} onClick={()=>applyBodyPreset(preset,key)}>{preset.label}</button>)}
           </div>
         </fieldset>
-        {!token ? <form onSubmit={event => {
-          event.preventDefault()
-          const form = event.currentTarget
-          const data = new FormData(form)
-          run(async () => {
-            const result = await fittingLogin(data.get('email'), data.get('password'))
-            const account = await getFittingAccount(result.access_token)
-            const savedMeasurements = readFittingMeasurements(account.id)
-            if (savedMeasurements) {
-              setValues(savedMeasurements)
-              setServerPreview(null)
-              setBaseline({ values: savedMeasurements, source: '이 브라우저 세션의 저장 치수' })
-              setSource('이 브라우저 세션의 저장 치수')
-            }
-            setAccountId(account.id)
-            setToken(result.access_token)
-            onSessionChange?.({...result,user:account})
-            form.reset()
-            setNotice(savedMeasurements ? '현재 브라우저 탭에서 저장한 치수를 복원했습니다.' : '로그인되었습니다. 내 키·체중 불러오기를 눌러 주세요.')
-          })
-        }}>
-          <h2>내 기록 연결</h2>
-          <p>기존 가입 계정으로 로그인하세요. 로그인 없이도 예시 치수를 조정할 수 있습니다.</p>
-          <fieldset disabled={busy}>
-            <label>이메일<input name="email" type="email" autoComplete="username" required /></label>
-            <label>비밀번호<input name="password" type="password" autoComplete="current-password" required /></label>
-            <button type="submit">로그인</button>
-          </fieldset>
-        </form> : <div className="fitting-actions">
+        {!token ? <div className="fitting-account-prompt">
+          <h2>내 기록 불러오기</h2>
+          <p>로그인하면 프로필·인바디 기록을 불러올 수 있습니다.</p>
+          <button type="button" onClick={onRequestLogin}>로그인하고 내 기록 불러오기</button>
+        </div> : <div className="fitting-actions">
           <button disabled={busy} onClick={() => run(async () => {
             const data = await getFittingDefaults(token)
             const loaded = { ...values, height_cm: data.height_cm ?? '', weight_kg: data.weight_kg ?? '' }
@@ -295,7 +289,7 @@ export default function FittingPage({session=null,onSessionChange}={}) {
           <button disabled={busy} onClick={() => { clearFittingMeasurements(accountId); onSessionChange?.(null); setAccountId(null); setToken(''); setFixedGarment(null); setValues(EXAMPLE); setBaseline({ values: EXAMPLE, source: '예시 치수' }); setServerPreview(null); setSource('예시 치수'); setNotice('로그아웃하고 이 브라우저 탭에 저장한 치수를 지웠습니다.') }}>로그아웃·치수 지우기</button>
         </div>}
         {token && <p className="fitting-storage-note">복구용 치수는 회원별 브라우저 탭에 임시 저장됩니다. 탭을 닫거나 로그아웃하면 삭제됩니다. ‘서버에서 변형값 확인’을 누르면 계산을 위해 API에 치수를 전송합니다.</p>}
-        {token && <InbodyUploadPanel key={token} token={token} disabled={busy} onExpired={() => setToken('')}
+        {token && <InbodyUploadPanel key={token} token={token} disabled={busy} onExpired={() => { setToken(''); setAccountId(null); onSessionChange?.(null) }}
           onApply={confirmedValues => {
             const updated = { ...values, ...confirmedValues }
             setValues(updated)
