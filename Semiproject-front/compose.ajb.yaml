@@ -6,7 +6,8 @@ services:
       context: .
       dockerfile: deploy/ec2/Dockerfile.api
     env_file:
-      - ./deploy/ec2/.env
+      - path: ./deploy/ec2/.env
+        format: raw
     expose:
       - "8000"
     init: true
