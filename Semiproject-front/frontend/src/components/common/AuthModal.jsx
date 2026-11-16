@@ -40,7 +40,8 @@ export default function AuthModal({ mode, onClose, onAuthenticated }) {
       onAuthenticated?.(result)
       setNotice(`${result.user.name}님, ${signup ? '회원가입이 완료되었습니다.' : '로그인되었습니다.'}`)
       onClose()
-      if (result.auth_type === 'admin') window.location.hash = '#/admin'
+      if (signup) window.location.hash = '#/'
+      else if (result.auth_type === 'admin') window.location.hash = '#/admin'
     } catch (error) {
       setNotice(error instanceof TypeError ? '서버에 연결할 수 없습니다. FastAPI 실행 상태를 확인해 주세요.' : error.message)
     } finally {

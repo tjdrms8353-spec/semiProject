@@ -29,6 +29,8 @@ def test_separate_admin_identity_has_no_member_privileges(client, configured_adm
     me = c.get('/api/auth/admin/me', headers=headers)
     assert me.json() == {'id':'admin:onfit-admin','name':'ONFIT 관리자','is_admin':True}
     assert c.get('/api/auth/public-members',headers=headers).status_code == 200
+    assert c.get('/api/auth/demo-members',headers=headers).status_code == 200
+    assert c.get('/api/auth/demo-members').status_code == 401
     assert c.get('/api/auth/me',headers=headers).status_code == 401
     assert c.get('/api/auth/account',headers=headers).status_code == 401
     assert c.request('DELETE','/api/auth/account',headers=headers,json={'password':'test-only-admin-password','confirmation':'회원탈퇴'}).status_code == 401
@@ -37,6 +39,7 @@ def test_separate_admin_identity_has_no_member_privileges(client, configured_adm
     member = {'Authorization':'Bearer '+login(c).json()['access_token']}
     assert c.get('/api/auth/admin/me',headers=member).status_code == 403
     assert c.get('/api/auth/public-members',headers=member).status_code == 403
+    assert c.get('/api/auth/demo-members',headers=member).status_code == 403
     assert c.get('/api/auth/me',headers=member).json()['is_admin'] is False
 
 
