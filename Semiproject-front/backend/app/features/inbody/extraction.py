@@ -5,6 +5,7 @@ PDFium calls are serialized because PDFium is not thread-safe.
 """
 from contextlib import closing
 from io import BytesIO
+import os
 import re
 from threading import Lock
 import warnings
@@ -15,6 +16,7 @@ import pypdfium2 as pdfium
 import pytesseract
 
 from app.features.inbody.schemas import ExtractionPreview, ExtractedValues
+from app.core.config import settings
 
 MAX_FILE_BYTES = 10 * 1024 * 1024
 MAX_PIXELS = 12_000_000
@@ -22,8 +24,7 @@ MAX_PAGES = 3
 MAX_TEXT = 100_000
 PDF_LOCK = Lock()
 
-# Only a labeled measurement on one line, with an optional explicit unit.
-# No guessing from a chart, historical series, reference interval, or bare number.
+# Match explicitly labeled values; still reject ranges and multiple candidates.
 LABELS = {
     "height_cm": (r"키|신장|Height", r"cm", 100, 230),
     "weight_kg": (r"체중|Weight", r"kg", 20, 300),
@@ -33,6 +34,26 @@ LABELS = {
 
 
 def parse_measurements(text: str, method: str) -> ExtractionPreview:
+    # Join split Korean labels without changing numeric tokens.
+    for label in ['골격근량', '체지방률', '신장', '체중']:
+        text = re.sub(r'[ \t]*'.join(label), label, text)
+    all_labels = '|'.join(f'(?:{item[0]})' for item in LABELS.values())
+    # Separate multiple labeled cells on a single OCR line. Match whole labels,
+    # not substrings in phrases such as 목표체중 or Skeletal Muscle Mass history.
+    label_start = re.compile(rf'(?<![A-Za-z가-힣])(?:{all_labels})(?![A-Za-z가-힣])', re.I)
+    cells = []
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        matches = list(label_start.finditer(line))
+        for position, match in enumerate(matches):
+            end = matches[position + 1].start() if position + 1 < len(matches) else len(line)
+            cell = line[match.start():end].strip(' \t|;')
+            # A value immediately below an otherwise empty label is permitted.
+            # No broad search into nearby graph/history/reference columns.
+            if index + 1 < len(lines) and re.fullmatch(r'[ \t]*\d+(?:\.\d{1,2})?[ \t]*(?:cm|kg|%)?[ \t]*', lines[index + 1], re.I):
+                if not re.search(r'\d', cell):
+                    cell += ' ' + lines[index + 1].strip()
+            cells.append(cell)
     values = {}
     messages = ["추출값을 원본과 대조하고 측정 시각을 직접 입력한 뒤 저장해 주세요."]
     for field, (label, unit, minimum, maximum) in LABELS.items():
@@ -40,7 +61,7 @@ def parse_measurements(text: str, method: str) -> ExtractionPreview:
             rf"^[ \t]*(?:{label})[ \t]*(?:\([ \t]*{unit}[ \t]*\))?[ \t]*[:：]?[ \t]*"
             rf"(?P<number>\d+(?:\.\d{{1,2}})?)[ \t]*(?:{unit})?[ \t]*$", re.I
         )
-        candidates = {float(match["number"]) for line in text.splitlines()
+        candidates = {float(match["number"]) for line in cells
                       if (match := pattern.fullmatch(line))}
         if len(candidates) == 1 and minimum <= next(iter(candidates)) <= maximum:
             values[field] = next(iter(candidates))
@@ -54,10 +75,21 @@ def parse_measurements(text: str, method: str) -> ExtractionPreview:
     return ExtractionPreview(method=method, values=ExtractedValues(**values), warnings=messages)
 
 
+def tesseract_config() -> str:
+    """Optional local paths; Docker keeps the installed executable/data defaults."""
+    if settings.tesseract_cmd:
+        pytesseract.pytesseract.tesseract_cmd = settings.tesseract_cmd
+    if settings.tesseract_data_dir:
+        # Environment inheritance avoids Windows pytesseract/shlex passing
+        # quotation marks literally inside a --tessdata-dir argument.
+        os.environ['TESSDATA_PREFIX'] = settings.tesseract_data_dir
+    return ''
+
+
 def ocr_image(image: Image.Image) -> str:
     try:
         # No external API: the engine works locally; its temporary files are cleaned by pytesseract.
-        return pytesseract.image_to_string(image, lang="kor+eng", timeout=20)
+        return pytesseract.image_to_string(image, lang="kor+eng", timeout=20, config=tesseract_config())
     except pytesseract.TesseractNotFoundError:
         raise HTTPException(503, "OCR 엔진이 준비되지 않았습니다. Tesseract와 kor/eng 언어 데이터가 필요합니다.") from None
     except pytesseract.TesseractError:

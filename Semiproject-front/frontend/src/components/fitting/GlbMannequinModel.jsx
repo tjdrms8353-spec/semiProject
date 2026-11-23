@@ -6,6 +6,7 @@ import { Box3, TextureLoader, NoColorSpace } from 'three'
 import { createBodyAppearance, MUSCLE_DETAIL_URL, MUSCLE_DETAIL_ENABLED } from './bodyAppearance.js'
 import NikeTShirt from './NikeTShirt.jsx'
 import GarmentGlb from './GarmentGlb.jsx'
+import { headwearForBody } from './headwearFit.js'
 import { applyMorphTest, captureMorphWeights, modelLayout, modelHeightLayout, preciseFrame } from './glbGeometry.js'
 import { createGlbCameraSession } from './glbCamera.js'
 import { applyBodyMorphs, bodyMorphWeights, bodyBuildWeights, BODY_MORPH_MODEL_URL, FEMALE_BODY_MODEL_URL, supportsBodyMorphs } from './bodyMorphs.js'
@@ -127,7 +128,7 @@ export default function GlbMannequinModel({ parameters, modelUrl = MANNEQUIN_MOD
       {garmentGlb && <GarmentGlb key="top" model={garmentGlb} onStatus={onGarmentStatus} color={garmentColor} morphWeights={garmentWeights} design={productDesign} productSize={productSize} onSizeMetrics={onSizeMetrics} editLogo={editLogo} onLogoMove={onLogoMove} />}
       {bottomGarment && <GarmentGlb key="bottom" model={bottomGarment} onStatus={onBottomStatus} morphWeights={garmentWeights} color={bottomColor} />}
       {outerGarment && <GarmentGlb key="outer" model={outerGarment} onStatus={onOuterStatus} morphWeights={garmentWeights} color={outerColor} />}
-      {headwear && <GarmentGlb key="headwear" model={headwear} onStatus={onHeadwearStatus} color={headwearColor} />}
+      {headwear && <GarmentGlb key="headwear" model={headwearForBody(headwear, modelUrl)} onStatus={onHeadwearStatus} color={headwearColor} />}
     </group>
     {tshirt && surface && <NikeTShirt {...tshirt} surface={surface} />}
     {frame && <GlbCamera frame={frame} rotation={rotation} viewRevision={viewRevision} editLogo={editLogo} />}

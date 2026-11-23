@@ -72,11 +72,39 @@ def test_korean_labels_and_ambiguity():
     assert invalid.values.skeletal_muscle_kg is None
 
 
+def test_local_ocr_paths_do_not_require_quoted_windows_arguments(monkeypatch):
+    import os
+    monkeypatch.setattr(extraction.settings, 'tesseract_cmd', 'C:/OCR/tesseract.exe')
+    monkeypatch.setattr(extraction.settings, 'tesseract_data_dir', 'C:/User Data/tessdata')
+    monkeypatch.setattr(pytesseract.pytesseract, 'tesseract_cmd', 'tesseract')
+    monkeypatch.delenv('TESSDATA_PREFIX', raising=False)
+    assert extraction.tesseract_config() == ''
+    assert pytesseract.pytesseract.tesseract_cmd == 'C:/OCR/tesseract.exe'
+    assert os.environ['TESSDATA_PREFIX'] == 'C:/User Data/tessdata'
+
+
+def test_multiple_labeled_cells_spaced_korean_and_split_value():
+    text = '신 장 (cm): 175.25 | 체 중 (kg): 70\n골 격 근 량 (kg)\n30.12\n체 지 방 률 (%) 20.5'
+    values = extraction.parse_measurements(text, 'image_ocr').values
+    assert values.height_cm == 175.25
+    assert values.weight_kg == 70
+    assert values.skeletal_muscle_kg == 30.12
+    assert values.body_fat_pct == 20.5
+
+
+@pytest.mark.parametrize('text', [
+    '체중 70 60 80', '체중 70 (60-80)', '목표체중 60',
+    '체중\n정상범위 60-80\n70', '체중: 70\n체중: 80',
+])
+def test_reference_history_and_ambiguous_numbers_are_not_guessed(text):
+    assert extraction.parse_measurements(text, 'image_ocr').values.weight_kg is None
+
+
 @pytest.mark.parametrize("fmt", ["PNG", "JPEG"])
 def test_image_ocr_contract(inbody_client, monkeypatch, fmt):
     c, headers = inbody_client
     def fake_ocr(image, **kwargs):
-        assert kwargs == {"lang": "kor+eng", "timeout": 20}
+        assert kwargs == {"lang": "kor+eng", "timeout": 20, "config": extraction.tesseract_config()}
         return TEXT
     monkeypatch.setattr(pytesseract, "image_to_string", fake_ocr)
     result = upload(c, headers, image_bytes(fmt), "image", "application/octet-stream")

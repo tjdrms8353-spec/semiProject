@@ -9,6 +9,7 @@
 **/.codex-*.log
 **/.codex-*.json
 **/node_modules/
+**/.vite/
 **/dist/
 **/.npm-cache/
 **/__pycache__/
